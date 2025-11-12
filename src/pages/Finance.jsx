@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, Edit, TrendingUp, Clock, Wallet } from 'lucide-react'
-import { getFinances, deleteFinance, getStudents } from '../lib/database'
+import { Plus, Trash2, Edit, TrendingUp, Clock, Wallet, Calendar, RefreshCw, ExternalLink } from 'lucide-react'
+import { getFinances, deleteFinance, getStudents, getBookings, getBookingsByStudent, syncBookingToFinance } from '../lib/database'
 import { formatZAR } from '../utils/currency'
+import { format } from 'date-fns'
+import { useNavigate } from 'react-router-dom'
 import FinanceModal from '../components/FinanceModal'
 
 export default function Finance() {
+  const navigate = useNavigate()
   const [finances, setFinances] = useState([])
   const [students, setStudents] = useState([])
+  const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [selectedFinance, setSelectedFinance] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -18,18 +23,68 @@ export default function Finance() {
 
   const loadData = async () => {
     try {
-      const [financesData, studentsData] = await Promise.all([
+      const [financesData, studentsData, bookingsData] = await Promise.all([
         getFinances(),
         getStudents(),
+        getBookings(),
       ])
       setFinances(financesData)
       setStudents(studentsData)
+      setBookings(bookingsData)
     } catch (error) {
       console.error('Error loading data:', error)
       alert('Failed to load data')
     } finally {
       setLoading(false)
     }
+  }
+  
+  const handleSyncAll = async () => {
+    if (!confirm('Sync all bookings to finance records? This will update hours based on completed bookings and payments.')) {
+      return
+    }
+    
+    setSyncing(true)
+    try {
+      for (const finance of finances) {
+        await syncBookingToFinance(finance.student_id)
+      }
+      loadData()
+      alert('Successfully synced all bookings to finance records!')
+    } catch (error) {
+      console.error('Error syncing:', error)
+      alert('Failed to sync bookings')
+    } finally {
+      setSyncing(false)
+    }
+  }
+  
+  const handleSyncStudent = async (studentId) => {
+    setSyncing(true)
+    try {
+      await syncBookingToFinance(studentId)
+      loadData()
+    } catch (error) {
+      console.error('Error syncing:', error)
+      alert('Failed to sync bookings')
+    } finally {
+      setSyncing(false)
+    }
+  }
+  
+  const getBookingsForStudent = (studentId) => {
+    return bookings.filter(b => b.student_id === studentId)
+  }
+  
+  const getBookingStats = (studentId) => {
+    const studentBookings = getBookingsForStudent(studentId)
+    const completed = studentBookings.filter(b => b.status === 'completed').length
+    const paid = studentBookings.filter(b => b.payment_status === 'paid').length
+    const unpaid = studentBookings.filter(b => b.payment_status === 'unpaid').length
+    const totalPaid = studentBookings.reduce((sum, b) => sum + parseFloat(b.amount_paid || 0), 0)
+    const totalDue = studentBookings.reduce((sum, b) => sum + parseFloat(b.amount_due || 0), 0)
+    
+    return { completed, paid, unpaid, totalPaid, totalDue, total: studentBookings.length }
   }
 
   const handleAdd = () => {
@@ -108,13 +163,24 @@ export default function Finance() {
           <h2 className="text-3xl font-bold text-gray-900">Finance Management</h2>
           <p className="text-gray-600 mt-1">Track payments and hours for all students</p>
         </div>
-        <button
-          onClick={handleAdd}
-          className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl transition-all shadow-lg hover:shadow-xl font-semibold"
-        >
-          <Plus size={20} />
-          <span>Add Record</span>
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSyncAll}
+            disabled={syncing}
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl transition-all shadow-lg hover:shadow-xl font-semibold disabled:opacity-50"
+            title="Sync all bookings to finance records"
+          >
+            <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
+            <span>{syncing ? 'Syncing...' : 'Sync Bookings'}</span>
+          </button>
+          <button
+            onClick={handleAdd}
+            className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl transition-all shadow-lg hover:shadow-xl font-semibold"
+          >
+            <Plus size={20} />
+            <span>Add Record</span>
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -205,6 +271,21 @@ export default function Finance() {
                   </div>
                   <div className="flex space-x-2">
                     <button
+                      onClick={() => handleSyncStudent(finance.student_id)}
+                      disabled={syncing}
+                      className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                      title="Sync bookings to finance"
+                    >
+                      <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
+                    </button>
+                    <button
+                      onClick={() => navigate('/bookings')}
+                      className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="View bookings"
+                    >
+                      <Calendar size={18} />
+                    </button>
+                    <button
                       onClick={() => handleEdit(finance)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                       title="Edit"
@@ -220,6 +301,58 @@ export default function Finance() {
                     </button>
                   </div>
                 </div>
+                
+                {/* Booking Stats */}
+                {(() => {
+                  const bookingStats = getBookingStats(finance.student_id)
+                  if (bookingStats.total > 0) {
+                    return (
+                      <div className="mb-4 p-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Calendar size={16} className="text-indigo-600" />
+                            <span className="text-sm font-semibold text-gray-700">Linked Bookings</span>
+                          </div>
+                          <button
+                            onClick={() => navigate('/bookings')}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                          >
+                            View All <ExternalLink size={12} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                          <div>
+                            <span className="text-gray-500">Total:</span>
+                            <span className="font-bold text-gray-900 ml-1">{bookingStats.total}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Completed:</span>
+                            <span className="font-bold text-green-600 ml-1">{bookingStats.completed}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Paid:</span>
+                            <span className="font-bold text-green-600 ml-1">{bookingStats.paid}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Unpaid:</span>
+                            <span className="font-bold text-red-600 ml-1">{bookingStats.unpaid}</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-indigo-200 flex justify-between text-xs">
+                          <span className="text-gray-600">Total Paid from Bookings:</span>
+                          <span className="font-bold text-green-600">{formatZAR(bookingStats.totalPaid)}</span>
+                        </div>
+                        {bookingStats.totalDue > bookingStats.totalPaid && (
+                          <div className="mt-1 flex justify-between text-xs">
+                            <span className="text-gray-600">Outstanding:</span>
+                            <span className="font-bold text-red-600">{formatZAR(bookingStats.totalDue - bookingStats.totalPaid)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
 
                 {/* Progress Bar */}
                 <div className="mb-4">

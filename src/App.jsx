@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import MainLayout from './components/MainLayout'
 import Students from './pages/Students'
+import Bookings from './pages/Bookings'
 import Sessions from './pages/Sessions'
 import TrainingPlans from './pages/TrainingPlans'
 import Finance from './pages/Finance'
@@ -56,6 +57,7 @@ function App() {
           <Route index element={<Navigate to="/students" replace />} />
           <Route path="students" element={<Students />} />
           <Route path="students/:id" element={<StudentDetail />} />
+          <Route path="bookings" element={<Bookings />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="training" element={<TrainingPlans />} />
           <Route path="finance" element={<Finance />} />

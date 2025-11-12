@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Users, Calendar, Target, DollarSign, Settings, Menu, X, Home } from 'lucide-react'
+import { Users, Calendar, Target, DollarSign, Settings, Menu, X, CalendarCheck } from 'lucide-react'
 
 export default function MainLayout() {
   const location = useLocation()
@@ -15,6 +15,7 @@ export default function MainLayout() {
 
   const navItems = [
     { path: '/students', icon: Users, label: 'Students' },
+    { path: '/bookings', icon: CalendarCheck, label: 'Bookings' },
     { path: '/sessions', icon: Calendar, label: 'Sessions' },
     { path: '/training', icon: Target, label: 'Training' },
     { path: '/finance', icon: DollarSign, label: 'Finance' },
@@ -112,7 +113,7 @@ export default function MainLayout() {
 
       {/* Mobile Bottom Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-30">
-        <div className="grid grid-cols-5 h-16">
+        <div className="grid grid-cols-6 h-16">
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = location.pathname.startsWith(item.path)
@@ -124,8 +125,8 @@ export default function MainLayout() {
                   isActive ? 'text-green-600' : 'text-gray-600'
                 }`}
               >
-                <Icon size={20} />
-                <span className="text-xs font-medium">{item.label}</span>
+                <Icon size={18} />
+                <span className="text-[10px] font-medium leading-tight text-center px-1">{item.label}</span>
               </Link>
             )
           })}
